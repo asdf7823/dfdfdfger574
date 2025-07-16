@@ -9,8 +9,8 @@
       color: #ffffff;
       font-family: Arial, sans-serif;
       text-align: center;
-      margin: 0;
       padding: 20px;
+      margin: 0;
     }
     h1 {
       color: #66fcf1;
@@ -62,7 +62,7 @@
   </style>
 </head>
 <body>
-  <h1>전자 껍질 3D 회전 시뮬레이션</h1>
+  <h1>3D 전자 껍질 운동 시뮬레이션</h1>
   <div class="controls">
     <label>K:
       <input type="number" id="kShell" value="2" min="0" max="2">
@@ -80,17 +80,18 @@
     <button onclick="simulate()">시뮬레이션 시작</button>
   </div>
 
-  <canvas id="atomCanvas" width="600" height="600"></canvas>
+  <canvas id="canvas" width="600" height="600"></canvas>
 
   <div class="result" id="analysisResult"></div>
 
   <script>
-    const canvas = document.getElementById("atomCanvas");
+    const canvas = document.getElementById("canvas");
     const ctx = canvas.getContext("2d");
     const centerX = canvas.width / 2;
     const centerY = canvas.height / 2;
 
-    let angleY = 0;
+    let electrons = [];
+    let angle = 0;
     let animationFrame;
 
     const knownAtoms = {
@@ -120,10 +121,10 @@
       return a.length === b.length && a.every((v, i) => v === b[i]);
     }
 
-    function findAtomByConfig(input) {
-      for (const [atomicNum, atom] of Object.entries(knownAtoms)) {
-        if (arraysEqual(atom.config, input)) {
-          return { atomicNum: parseInt(atomicNum), name: atom.name };
+    function findAtomByConfig(config) {
+      for (const [num, atom] of Object.entries(knownAtoms)) {
+        if (arraysEqual(atom.config, config)) {
+          return { atomicNum: +num, name: atom.name };
         }
       }
       return null;
@@ -131,89 +132,82 @@
 
     function simulate() {
       cancelAnimationFrame(animationFrame);
+      electrons = [];
+
       const k = parseInt(document.getElementById("kShell").value);
       const l = parseInt(document.getElementById("lShell").value);
       const m = parseInt(document.getElementById("mShell").value);
       const n = parseInt(document.getElementById("nShell").value);
+      const config = [k, l, m, n];
+      const total = k + l + m + n;
 
-      const inputConfig = [k, l, m, n];
-      const totalElectrons = k + l + m + n;
-      const match = findAtomByConfig(inputConfig);
-
-      let stateText = "";
-      if (match) {
-        stateText = `🌟 원자: <span class="highlight">${match.name} (Z=${match.atomicNum})</span><br>상태: <span class="highlight">바닥 상태</span>`;
+      const atom = findAtomByConfig(config);
+      if (atom) {
+        document.getElementById("analysisResult").innerHTML = `🌟 원자: <span class="highlight">${atom.name} (Z=${atom.atomicNum})</span><br>상태: <span class="highlight">바닥 상태</span>`;
       } else {
-        let closest = null;
-        for (const [z, atom] of Object.entries(knownAtoms)) {
-          const total = atom.config.reduce((a, b) => a + b, 0);
-          if (total === totalElectrons) {
-            closest = atom;
-            break;
-          }
-        }
-        if (closest) {
-          stateText = `🌟 전자 수는 <span class="highlight">${totalElectrons}</span>개이며, <span class="highlight">${closest.name}</span>의 들뜬 상태일 수 있습니다.<br>상태: <span class="highlight">들뜬 상태</span>`;
-        } else {
-          stateText = `⚠️ <span class="highlight">${totalElectrons}</span>개의 전자는 현재 데이터에 없는 원소이거나 범위를 초과합니다.`;
+        document.getElementById("analysisResult").innerHTML = `⚛️ 총 전자 수 <span class="highlight">${total}</span>개 - <span class="highlight">들뜬 상태 또는 미등록 원소</span>`;
+      }
+
+      const shells = [
+        { count: k, radius: 60, color: "#66fcf1" },
+        { count: l, radius: 100, color: "#45a29e" },
+        { count: m, radius: 140, color: "#c5c6c7" },
+        { count: n, radius: 180, color: "#be9fe1" }
+      ];
+
+      for (const shell of shells) {
+        for (let i = 0; i < shell.count; i++) {
+          const theta = (2 * Math.PI * i) / shell.count;
+          const phi = Math.PI / 4 + (i % 2 === 0 ? 0.1 : -0.1); // 약간의 위도 차
+          electrons.push({
+            r: shell.radius,
+            theta: theta,
+            phi: phi,
+            speed: 0.01 + Math.random() * 0.01,
+            color: shell.color
+          });
         }
       }
 
-      document.getElementById("analysisResult").innerHTML = stateText;
-
-      const shells = [
-        { radius: 80, count: k, color: "#66fcf1" },
-        { radius: 130, count: l, color: "#45a29e" },
-        { radius: 180, count: m, color: "#c5c6c7" },
-        { radius: 230, count: n, color: "#be9fe1" },
-      ];
-
-      animate(shells);
+      angle = 0;
+      animate();
     }
 
-    function project3D(x, y, z, angleY) {
-      const cosY = Math.cos(angleY);
-      const sinY = Math.sin(angleY);
-      const xRot = x * cosY - z * sinY;
-      const zRot = x * sinY + z * cosY;
-      const scale = 300 / (300 + zRot);
+    function project3D(x, y, z) {
+      const scale = 300 / (300 + z);
       return {
-        x: centerX + xRot * scale,
+        x: centerX + x * scale,
         y: centerY + y * scale
       };
     }
 
-    function animate(shells) {
+    function animate() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       // 핵
       ctx.beginPath();
-      ctx.arc(centerX, centerY, 30, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(255, 0, 0, 0.8)";
+      ctx.arc(centerX, centerY, 25, 0, Math.PI * 2);
+      ctx.fillStyle = "#ff2e63";
       ctx.fill();
       ctx.closePath();
 
-      shells.forEach(shell => {
-        for (let i = 0; i < shell.count; i++) {
-          const theta = (2 * Math.PI * i) / shell.count;
-          const phi = Math.PI / 4; // 고정된 위도 (간단 구현)
+      // 전자들
+      for (const e of electrons) {
+        e.theta += e.speed;
+        const x = e.r * Math.sin(e.phi) * Math.cos(e.theta + angle);
+        const y = e.r * Math.cos(e.phi);
+        const z = e.r * Math.sin(e.phi) * Math.sin(e.theta + angle);
 
-          const x = shell.radius * Math.sin(phi) * Math.cos(theta);
-          const y = shell.radius * Math.cos(phi);
-          const z = shell.radius * Math.sin(phi) * Math.sin(theta);
+        const point = project3D(x, y, z);
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, 5, 0, Math.PI * 2);
+        ctx.fillStyle = e.color;
+        ctx.fill();
+        ctx.closePath();
+      }
 
-          const point = project3D(x, y, z, angleY);
-
-          ctx.beginPath();
-          ctx.arc(point.x, point.y, 5, 0, Math.PI * 2);
-          ctx.fillStyle = shell.color;
-          ctx.fill();
-          ctx.closePath();
-        }
-      });
-
-      angleY += 0.01;
-      animationFrame = requestAnimationFrame(() => animate(shells));
+      angle += 0.002;
+      animationFrame = requestAnimationFrame(animate);
     }
 
     simulate(); // 초기 실행
